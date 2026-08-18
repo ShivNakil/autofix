@@ -109,6 +109,23 @@ def apply_code_edits(
     repository_path: str,
     edits: list[CodeEdit],
 ) -> None:
+    # Phase 1 policy: never let the agent alter tests as a side effect of
+    # repairing production code. This prevents gaming the test suite.
+    for edit in edits:
+        normalized = edit.file.replace("\\", "/").lower()
+        if (
+            normalized.startswith("test/")
+            or "/test/" in normalized
+            or normalized.startswith("tests/")
+            or "/tests/" in normalized
+            or normalized.startswith("spec/")
+            or "/spec/" in normalized
+            or Path(normalized).name.startswith("test_")
+        ):
+            raise ValueError(
+                f"Phase 1 refuses test-file edits: {edit.file}"
+            )
+
     # Validate ALL edits before modifying anything. This prevents partial
     # application of a multi-file edit plan.
     for edit in edits:

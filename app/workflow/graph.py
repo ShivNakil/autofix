@@ -15,6 +15,27 @@ from app.tools.repository import (
 from app.tools.testing import detect_test_command, run_tests
 
 
+
+def _build_file_context(repository_path: str, files: list[str]) -> str:
+    """Read the current contents of relevant files after every edit."""
+    chunks = []
+
+    for relative in files[:12]:
+        try:
+            content = read_file(
+                repository_path,
+                relative,
+                max_chars=12000,
+            )
+            chunks.append(
+                f"===== FILE: {relative} =====\n{content}"
+            )
+        except Exception:
+            continue
+
+    return "\n\n".join(chunks)
+
+
 def clone_node(state: AgentState) -> AgentState:
     repo_url = state["repo_url"]
     workspace = settings.workspace_path
@@ -146,6 +167,7 @@ def apply_edits(state: AgentState, plan) -> AgentState:
         "file_context": refreshed,
     }
 
+
 def patch_node(state: AgentState) -> AgentState:
     if state.get("tests_passed"):
         return state
@@ -233,6 +255,7 @@ def debug_node(state: AgentState) -> AgentState:
 def finish_node(state: AgentState) -> AgentState:
     if state.get("tests_passed"):
         status = "SUCCESS"
+        print("[RESULT] SUCCESS - tests passed.")
     elif state.get("final_status") == "NO_SAFE_EDIT":
         status = "NO_SAFE_EDIT"
     else:

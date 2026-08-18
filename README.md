@@ -174,3 +174,11 @@ window. It still refuses zero matches and ambiguous matches.
 
 The workflow also refreshes repository context after every edit and before
 every debugging iteration.
+
+
+## v4 fixes
+
+- Restores the repository-context refresh helper used after edits.
+- Refreshes actual file contents before debugging.
+- Phase 1 refuses test-file edits so the agent cannot make a failing test pass
+  by weakening or changing the test.

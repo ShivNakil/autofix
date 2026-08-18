@@ -59,3 +59,20 @@ def test_reject_ambiguous_edit(tmp_path: Path):
                 reason="Test.",
             ),
         )
+
+
+def test_reject_test_file_edit(tmp_path: Path):
+    test_file = tmp_path / "test_calculator.py"
+    test_file.write_text("def test_x():\n    assert True\n")
+
+    with pytest.raises(ValueError, match="test-file"):
+        from app.tools.patching import apply_code_edits
+        apply_code_edits(
+            str(tmp_path),
+            [CodeEdit(
+                file="test_calculator.py",
+                old="assert True",
+                new="assert False",
+                reason="Should never be allowed in Phase 1.",
+            )],
+        )
