@@ -40,6 +40,44 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
+## Usage
+
+### Command Line Interface (CLI)
+
+```bash
+python -m app.main
+```
+
+### Streamlit Web Interface (Recommended for beginners)
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Or use the provided batch file:
+```bash
+run_ui.bat
+```
+
+#### Web Interface Features
+
+The Streamlit web interface provides an accessible way to use AutoFix Agent without command-line expertise:
+
+- **Visual Configuration**: Use dropdowns, text fields, and sliders to configure LLM providers, models, and advanced settings
+- **Issue Fetching**: Click "Fetch Issue" to automatically retrieve issue title and description from a GitHub issue URL
+- **Real-time Progress**: Monitor the agent's execution with progress bars and status updates
+- **Organized Results**: View analysis, test output, git diff, and repository information in expandable sections
+- **Error Handling**: Clear error messages and validation for required inputs
+- **Environment Setup**: Configure API keys and endpoints directly in the interface (or use environment variables)
+
+The interface guides users through each step of the AutoFix process:
+1. Select your preferred LLM provider and enter required credentials
+2. Specify the GitHub repository to fix (must end with `.git`)
+3. Provide issue details either manually or by fetching from a GitHub URL
+4. Adjust advanced settings like retry limits and timeouts as needed
+5. Start the agent and watch it work through the workflow stages
+6. Review the final results including any code changes made and test outcomes
+
 For local Ollama:
 
 ```bash
