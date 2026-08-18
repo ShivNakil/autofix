@@ -182,3 +182,11 @@ every debugging iteration.
 - Refreshes actual file contents before debugging.
 - Phase 1 refuses test-file edits so the agent cannot make a failing test pass
   by weakening or changing the test.
+
+
+## v5 test discovery
+
+Python test discovery now recognizes common root-level files such as
+`test_calculator.py` and `calculator_test.py`, in addition to tests inside a
+`tests/` directory. This is important because small repositories frequently
+keep source and test files at the repository root.

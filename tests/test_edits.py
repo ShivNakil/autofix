@@ -76,3 +76,14 @@ def test_reject_test_file_edit(tmp_path: Path):
                 reason="Should never be allowed in Phase 1.",
             )],
         )
+
+
+def test_detect_direct_python_test_file(tmp_path: Path):
+    from app.tools.testing import detect_test_command
+
+    (tmp_path / "calculator.py").write_text("def add(a, b): return a + b\n")
+    (tmp_path / "test_calculator.py").write_text(
+        "def test_add(): assert True\n"
+    )
+
+    assert detect_test_command(str(tmp_path)) == "python -m pytest"
