@@ -190,3 +190,18 @@ Python test discovery now recognizes common root-level files such as
 `test_calculator.py` and `calculator_test.py`, in addition to tests inside a
 `tests/` directory. This is important because small repositories frequently
 keep source and test files at the repository root.
+
+
+## v6 failure classification
+
+Phase 1 now distinguishes:
+
+- `PASSED` — finish successfully.
+- `CODE_FAILURE` — send the failure to the debugging agent.
+- `ENVIRONMENT_ERROR` — stop without spending an LLM call on source-code
+  debugging.
+- `TIMEOUT` — stop as an operational failure.
+- `UNKNOWN_FAILURE` — treated conservatively as a non-success.
+
+LLM provider errors are also normalized so quota/rate-limit failures do not
+trigger an uncontrolled retry loop.

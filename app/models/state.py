@@ -21,6 +21,7 @@ class AgentState(TypedDict, total=False):
     patch_applied: bool
     test_command: str
     test_output: str
+    test_status: str
     tests_passed: bool
 
     iteration: int

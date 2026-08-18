@@ -87,3 +87,39 @@ def test_detect_direct_python_test_file(tmp_path: Path):
     )
 
     assert detect_test_command(str(tmp_path)) == "python -m pytest"
+
+
+def test_classify_missing_pytest_as_environment_error():
+    from app.tools.testing import classify_test_output
+    from app.models.test_result import TestStatus
+
+    status = classify_test_output(
+        "python.exe: No module named pytest",
+        1,
+    )
+
+    assert status == TestStatus.ENVIRONMENT_ERROR
+
+
+def test_classify_assertion_as_code_failure():
+    from app.tools.testing import classify_test_output
+    from app.models.test_result import TestStatus
+
+    status = classify_test_output(
+        "FAILED test_calculator.py::test_add - AssertionError: assert 4 == 5",
+        1,
+    )
+
+    assert status == TestStatus.CODE_FAILURE
+
+
+def test_classify_success():
+    from app.tools.testing import classify_test_output
+    from app.models.test_result import TestStatus
+
+    status = classify_test_output(
+        "3 passed in 0.04s",
+        0,
+    )
+
+    assert status == TestStatus.PASSED

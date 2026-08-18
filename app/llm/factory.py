@@ -47,3 +47,40 @@ def get_llm() -> BaseChatModel:
         f"Unsupported LLM_PROVIDER={settings.llm_provider!r}. "
         "Use ollama, openai, anthropic, or gemini."
     )
+
+
+class LLMServiceError(RuntimeError):
+    """Normalized provider-facing error for the agent runtime."""
+
+    def __init__(self, kind: str, message: str):
+        super().__init__(message)
+        self.kind = kind
+
+
+def classify_llm_error(exc: Exception) -> LLMServiceError:
+    text = str(exc)
+    lowered = text.lower()
+
+    if "429" in lowered or "resourceexhausted" in lowered or "quota" in lowered:
+        return LLMServiceError(
+            "QUOTA_EXCEEDED",
+            "LLM provider quota/rate limit was exceeded. "
+            "Stop this run instead of repeatedly retrying.",
+        )
+
+    if "401" in lowered or "403" in lowered or "unauthorized" in lowered:
+        return LLMServiceError(
+            "AUTHENTICATION_ERROR",
+            "LLM provider authentication or permission failed.",
+        )
+
+    if "timeout" in lowered:
+        return LLMServiceError(
+            "TIMEOUT",
+            "LLM provider request timed out.",
+        )
+
+    return LLMServiceError(
+        "PROVIDER_ERROR",
+        f"LLM provider request failed: {text}",
+    )

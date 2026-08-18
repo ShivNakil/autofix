@@ -13,6 +13,7 @@ from app.tools.repository import (
     search_repository,
 )
 from app.tools.testing import detect_test_command, run_tests
+from app.models.test_result import TestStatus
 
 
 
@@ -185,35 +186,58 @@ def test_node(state: AgentState) -> AgentState:
             **state,
             "test_command": "",
             "test_output": "NO_TEST_COMMAND_DETECTED",
+            "test_status": TestStatus.ENVIRONMENT_ERROR.value,
             "tests_passed": False,
-            "final_status": "NO_TEST_COMMAND",
+            "final_status": "ENVIRONMENT_ERROR",
         }
 
     print(f"[TEST] Running: {command}")
 
-    passed, output = run_tests(
+    result = run_tests(
         state["repository_path"],
         command=command,
         timeout=settings.test_timeout_seconds,
     )
 
-    print("[TEST] PASSED" if passed else "[TEST] FAILED")
+    print(f"[TEST] STATUS: {result.status.value}")
 
     return {
         **state,
-        "test_command": command,
-        "test_output": output,
-        "tests_passed": passed,
+        "test_command": result.command,
+        "test_output": result.output,
+        "test_status": result.status.value,
+        "tests_passed": result.status == TestStatus.PASSED,
+        "final_status": (
+            "SUCCESS"
+            if result.status == TestStatus.PASSED
+            else (
+                "ENVIRONMENT_ERROR"
+                if result.status == TestStatus.ENVIRONMENT_ERROR
+                else (
+                    "TIMEOUT"
+                    if result.status == TestStatus.TIMEOUT
+                    else state.get("final_status", "")
+                )
+            )
+        ),
     }
 
 def should_debug(state: AgentState) -> str:
-    if state.get("tests_passed"):
+    status = state.get("test_status")
+
+    if status == TestStatus.PASSED.value:
         return "finish"
 
-    if state.get("final_status") in {
-        "NO_SAFE_EDIT",
-        "NO_TEST_COMMAND",
-    }:
+    # Environment failures are not source-code bugs. Do not spend an LLM call
+    # trying to repair application code for missing dependencies/tools.
+    if status == TestStatus.ENVIRONMENT_ERROR.value:
+        return "finish"
+
+    # A timeout is handled as an operational failure in Phase 1.
+    if status == TestStatus.TIMEOUT.value:
+        return "finish"
+
+    if state.get("final_status") == "NO_SAFE_EDIT":
         return "finish"
 
     if state.get("iteration", 0) >= state.get(
@@ -223,7 +247,6 @@ def should_debug(state: AgentState) -> str:
         return "finish"
 
     return "debug"
-
 
 def debug_node(state: AgentState) -> AgentState:
     iteration = state.get("iteration", 0) + 1
@@ -253,20 +276,29 @@ def debug_node(state: AgentState) -> AgentState:
     return apply_edits(current_state, plan)
 
 def finish_node(state: AgentState) -> AgentState:
-    if state.get("tests_passed"):
+    test_status = state.get("test_status")
+
+    if test_status == TestStatus.PASSED.value:
         status = "SUCCESS"
         print("[RESULT] SUCCESS - tests passed.")
+    elif test_status == TestStatus.ENVIRONMENT_ERROR.value:
+        status = "ENVIRONMENT_ERROR"
+        print("[RESULT] STOPPED - test environment is not ready.")
+    elif test_status == TestStatus.TIMEOUT.value:
+        status = "TIMEOUT"
+        print("[RESULT] STOPPED - tests timed out.")
     elif state.get("final_status") == "NO_SAFE_EDIT":
         status = "NO_SAFE_EDIT"
+        print("[RESULT] STOPPED - no safe edit was generated.")
     else:
         status = "FAILED"
+        print("[RESULT] FAILED - code tests did not pass.")
 
     return {
         **state,
         "final_status": status,
         "final_diff": get_diff(state["repository_path"]),
     }
-
 
 def build_graph():
     graph = StateGraph(AgentState)
