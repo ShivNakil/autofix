@@ -27,4 +27,5 @@ class AgentState(TypedDict, total=False):
     max_iterations: int
 
     final_status: str
+    final_diff: str
     error: str

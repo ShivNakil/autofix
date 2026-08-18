@@ -1,46 +1,31 @@
-import re
-import subprocess
 from pathlib import Path
+from app.models.edits import CodeEdit
 
+def apply_code_edit(repository_path: str, edit: CodeEdit) -> None:
+    root = Path(repository_path).resolve()
+    target = (root / edit.file).resolve()
+    if root != target and root not in target.parents:
+        raise ValueError("File access outside repository is not allowed.")
+    if not target.exists() or not target.is_file():
+        raise FileNotFoundError(edit.file)
+    content = target.read_text(encoding="utf-8", errors="replace")
+    count = content.count(edit.old)
+    if count == 0:
+        raise ValueError(f"Exact target text was not found in {edit.file}.")
+    if count > 1:
+        raise ValueError(f"Exact target text occurs {count} times in {edit.file}; refusing ambiguous edit.")
+    target.write_text(content.replace(edit.old, edit.new, 1), encoding="utf-8")
 
-def extract_patch(text: str) -> str:
-    match = re.search(
-        r"```(?:diff|patch)?\s*(.*?)```",
-        text,
-        flags=re.DOTALL | re.IGNORECASE,
-    )
-    if match:
-        return match.group(1).strip()
-
-    if text.lstrip().startswith(("diff --git", "--- ")):
-        return text.strip()
-
-    raise ValueError("The model response did not contain a diff/patch block.")
-
-
-def apply_patch(repository_path: str, patch: str) -> None:
-    process = subprocess.run(
-        ["git", "apply", "--whitespace=fix", "-"],
-        cwd=repository_path,
-        input=patch,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-
-    if process.returncode != 0:
-        raise RuntimeError(
-            "git apply failed:\n"
-            + process.stderr.strip()
-        )
-
-
-def validate_patch(patch: str) -> None:
-    if not patch.strip():
-        raise ValueError("Empty patch.")
-
-    if "diff --git " not in patch and not (
-        "--- " in patch and "+++ " in patch
-    ):
-        raise ValueError("Patch does not look like a unified git diff.")
+def apply_code_edits(repository_path: str, edits: list[CodeEdit]) -> None:
+    root = Path(repository_path).resolve()
+    for edit in edits:
+        target = (root / edit.file).resolve()
+        if root != target and root not in target.parents:
+            raise ValueError(f"File access outside repository: {edit.file}")
+        if not target.exists() or not target.is_file():
+            raise FileNotFoundError(edit.file)
+        content = target.read_text(encoding="utf-8", errors="replace")
+        if content.count(edit.old) != 1:
+            raise ValueError(f"Expected exactly one match for edit in {edit.file}, found {content.count(edit.old)}.")
+    for edit in edits:
+        apply_code_edit(repository_path, edit)

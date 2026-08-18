@@ -153,3 +153,14 @@ LLM Factory
  |------ Anthropic
  `------ Gemini
 ```
+
+
+## Phase 1 patch architecture
+
+The model does not generate a Git diff. It returns structured exact text edits:
+`file`, `old`, `new`, and `reason`.
+
+The deterministic edit tool verifies that each `old` string exists exactly once,
+applies the replacement, and lets Git generate the authoritative diff. This
+avoids malformed LLM-generated hunks and cleanly separates probabilistic
+reasoning from deterministic repository mutation.

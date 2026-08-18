@@ -2,12 +2,12 @@ from pathlib import Path
 
 from langgraph.graph import StateGraph, START, END
 
-from app.agents.coding_agent import analyze, generate_patch, debug_patch
+from app.agents.coding_agent import analyze, generate_edits, debug_edits
 from app.config import settings
 from app.models.state import AgentState
 from app.tools.filesystem import read_file
 from app.tools.git import clone_repository, create_branch, get_diff
-from app.tools.patching import apply_patch, extract_patch, validate_patch
+from app.tools.patching import apply_code_edits
 from app.tools.repository import (
     get_repository_structure,
     search_repository,
@@ -117,35 +117,19 @@ def analysis_node(state: AgentState) -> AgentState:
     }
 
 
+def apply_edits(state: AgentState, plan) -> AgentState:
+    if not plan.edits:
+        return {**state, "patch_applied": False, "final_status": "NO_SAFE_EDIT"}
+    apply_code_edits(state["repository_path"], plan.edits)
+    return {**state, "patch_applied": True}
+
 def patch_node(state: AgentState) -> AgentState:
     if state.get("tests_passed"):
         return state
-
-    raw = generate_patch(
-        state["issue_title"],
-        state["issue_description"],
-        state["analysis"],
-        state.get("file_context", ""),
-    )
-
-    if "NO_SAFE_PATCH" in raw:
-        return {
-            **state,
-            "patch": "",
-            "patch_applied": False,
-            "final_status": "NO_SAFE_PATCH",
-        }
-
-    patch = extract_patch(raw)
-    validate_patch(patch)
-    apply_patch(state["repository_path"], patch)
-
-    return {
-        **state,
-        "patch": patch,
-        "patch_applied": True,
-    }
-
+    return apply_edits(state, generate_edits(
+        state["issue_title"], state["issue_description"],
+        state["analysis"], state.get("file_context", "")
+    ))
 
 def test_node(state: AgentState) -> AgentState:
     command = detect_test_command(state["repository_path"])
@@ -167,7 +151,7 @@ def should_debug(state: AgentState) -> str:
     if state.get("tests_passed"):
         return "finish"
 
-    if state.get("final_status") == "NO_SAFE_PATCH":
+    if state.get("final_status") == "NO_SAFE_EDIT":
         return "finish"
 
     if state.get("iteration", 0) >= state.get(
@@ -180,45 +164,18 @@ def should_debug(state: AgentState) -> str:
 
 
 def debug_node(state: AgentState) -> AgentState:
-    # Re-read the relevant files after the failed attempt.
-    file_context = state.get("file_context", "")
-
-    raw = debug_patch(
-        state["issue_title"],
-        state["issue_description"],
-        state["analysis"],
-        state.get("test_output", ""),
-        file_context,
+    plan = debug_edits(
+        state["issue_title"], state["issue_description"], state["analysis"],
+        state.get("test_output", ""), state.get("file_context", "")
     )
-
-    if "NO_SAFE_PATCH" in raw:
-        return {
-            **state,
-            "patch": "",
-            "patch_applied": False,
-            "final_status": "NO_SAFE_PATCH",
-        }
-
-    patch = extract_patch(raw)
-    validate_patch(patch)
-
-    # A failed patch may have changed the tree. For Phase 1 we attempt the
-    # correction directly; git apply will reject incompatible hunks.
-    apply_patch(state["repository_path"], patch)
-
-    return {
-        **state,
-        "patch": patch,
-        "patch_applied": True,
-        "iteration": state.get("iteration", 0) + 1,
-    }
-
+    result = apply_edits(state, plan)
+    return {**result, "iteration": state.get("iteration", 0) + 1}
 
 def finish_node(state: AgentState) -> AgentState:
     if state.get("tests_passed"):
         status = "SUCCESS"
-    elif state.get("final_status") == "NO_SAFE_PATCH":
-        status = "NO_SAFE_PATCH"
+    elif state.get("final_status") == "NO_SAFE_EDIT":
+        status = "NO_SAFE_EDIT"
     else:
         status = "FAILED"
 

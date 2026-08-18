@@ -1,31 +1,16 @@
 from langchain_core.messages import HumanMessage, SystemMessage
-
-from app.agents.prompts import (
-    ANALYSIS_PROMPT,
-    PATCH_PROMPT,
-    DEBUG_PROMPT,
-)
+from app.agents.prompts import ANALYSIS_PROMPT, EDIT_PROMPT, DEBUG_PROMPT
 from app.llm.factory import get_llm
-
+from app.models.edits import CodeEditPlan
 
 def _text(response) -> str:
     content = response.content
-    if isinstance(content, str):
-        return content
-    return str(content)
+    return content if isinstance(content, str) else str(content)
 
-
-def analyze(
-    issue_title: str,
-    issue_description: str,
-    repository_structure: str,
-    search_results: str,
-    file_context: str,
-) -> str:
-    llm = get_llm()
-
-    user = f"""
-ISSUE TITLE:
+def analyze(issue_title, issue_description, repository_structure, search_results, file_context):
+    response = get_llm().invoke([
+        SystemMessage(content=ANALYSIS_PROMPT),
+        HumanMessage(content=f"""ISSUE TITLE:
 {issue_title}
 
 ISSUE DESCRIPTION:
@@ -39,32 +24,14 @@ SEARCH RESULTS:
 
 RELEVANT FILE CONTENT:
 {file_context}
-"""
-
-    response = llm.invoke([
-        SystemMessage(content=ANALYSIS_PROMPT),
-        HumanMessage(content=user),
+"""),
     ])
+    return _text(response)
 
-    raw = _text(response)
-
-    print("\n========== RAW GEMINI PATCH ==========")
-    print(raw)
-    print("========== END RAW GEMINI PATCH ==========\n")
-
-    return raw
-
-
-def generate_patch(
-    issue_title: str,
-    issue_description: str,
-    analysis: str,
-    file_context: str,
-) -> str:
-    llm = get_llm()
-
-    user = f"""
-ISSUE TITLE:
+def generate_edits(issue_title, issue_description, analysis, file_context) -> CodeEditPlan:
+    response = get_llm().with_structured_output(CodeEditPlan).invoke([
+        SystemMessage(content=EDIT_PROMPT),
+        HumanMessage(content=f"""ISSUE TITLE:
 {issue_title}
 
 ISSUE DESCRIPTION:
@@ -73,35 +40,21 @@ ISSUE DESCRIPTION:
 ENGINEERING ANALYSIS:
 {analysis}
 
-RELEVANT FILE CONTENT:
+CURRENT RELEVANT FILE CONTENT:
 {file_context}
-"""
-
-    response = llm.invoke([
-        SystemMessage(content=PATCH_PROMPT),
-        HumanMessage(content=user),
+"""),
     ])
 
-    raw = _text(response)
+    print("\n========== STRUCTURED EDIT ==========")
+    print(response)
+    print("========== END STRUCTURED EDIT ==========\n")
 
-    print("\n========== RAW GEMINI PATCH ==========")
-    print(raw)
-    print("========== END RAW GEMINI PATCH ==========\n")
+    return response if isinstance(response, CodeEditPlan) else CodeEditPlan.model_validate(response)
 
-    return raw
-
-
-def debug_patch(
-    issue_title: str,
-    issue_description: str,
-    analysis: str,
-    test_output: str,
-    file_context: str,
-) -> str:
-    llm = get_llm()
-
-    user = f"""
-ISSUE TITLE:
+def debug_edits(issue_title, issue_description, analysis, test_output, file_context) -> CodeEditPlan:
+    response = get_llm().with_structured_output(CodeEditPlan).invoke([
+        SystemMessage(content=DEBUG_PROMPT),
+        HumanMessage(content=f"""ISSUE TITLE:
 {issue_title}
 
 ISSUE DESCRIPTION:
@@ -113,19 +66,8 @@ PREVIOUS ANALYSIS:
 TEST FAILURE:
 {test_output}
 
-RELEVANT FILE CONTENT:
+CURRENT RELEVANT FILE CONTENT:
 {file_context}
-"""
-
-    response = llm.invoke([
-        SystemMessage(content=DEBUG_PROMPT),
-        HumanMessage(content=user),
+"""),
     ])
-
-    raw = _text(response)
-
-    print("\n========== RAW GEMINI PATCH ==========")
-    print(raw)
-    print("========== END RAW GEMINI PATCH ==========\n")
-
-    return raw
+    return response if isinstance(response, CodeEditPlan) else CodeEditPlan.model_validate(response)
