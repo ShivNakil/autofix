@@ -3,7 +3,7 @@ import argparse
 import sys
 
 from app.config import settings
-from app.tools.github import fetch_public_issue
+from app.tools.github import parse_repo_url, fetch_open_issues
 from app.workflow.graph import build_graph
 
 
@@ -13,9 +13,6 @@ def parse_args():
     )
 
     parser.add_argument("--repo", help="GitHub repository URL")
-    parser.add_argument("--issue-url", default="")
-    parser.add_argument("--issue-title")
-    parser.add_argument("--issue-description")
     parser.add_argument(
         "--max-retries",
         type=int,
@@ -69,6 +66,7 @@ def run_with_progress(graph, initial_state, max_retries):
 
     return final_state
 
+
 def main():
     args = parse_args()
 
@@ -77,30 +75,55 @@ def main():
         "GitHub repository URL: ",
     )
 
-    issue_url = args.issue_url or input(
-        "GitHub issue URL (optional): "
-    ).strip()
+    # Parse the repository URL to get owner and repo
+    try:
+        owner, repo_name = parse_repo_url(repo)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
 
-    # If an issue URL is provided, retrieve the issue directly from GitHub.
-    # Title/description flags can still override the fetched values.
-    fetched_issue = {}
-    if issue_url:
+    # Fetch open issues
+    print(f"\nFetching open issues from {owner}/{repo_name}...")
+    try:
+        issues = fetch_open_issues(owner, repo_name)
+    except Exception as exc:
+        print(f"Failed to fetch issues: {exc}")
+        sys.exit(1)
+
+    if not issues:
+        print("No open issues found in the repository.")
+        sys.exit(0)
+
+    # Display issues for user selection
+    print("\nOpen issues:")
+    for idx, issue in enumerate(issues, start=1):
+        # Truncate title if too long for display
+        title = issue["title"]
+        if len(title) > 60:
+            title = title[:57] + "..."
+        print(f"  {idx}. #{issue['number']}: {title}")
+
+    # Ask user to select an issue
+    while True:
         try:
-            fetched_issue = fetch_public_issue(issue_url)
-            print(f"Fetched GitHub issue: {fetched_issue['title']}")
-        except Exception as exc:
-            print(f"Could not fetch GitHub issue: {exc}")
-            print("You can continue by entering the issue manually.")
+            choice = input("\nSelect an issue by number (or 0 to cancel): ").strip()
+            if choice == "0":
+                print("Cancelled.")
+                sys.exit(0)
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(issues):
+                selected_issue = issues[choice_idx]
+                break
+            else:
+                print(f"Please enter a number between 1 and {len(issues)}.")
+        except ValueError:
+            print("Please enter a valid number.")
 
-    title = args.issue_title or fetched_issue.get("title") or input(
-        "Issue title: "
-    ).strip()
+    title = selected_issue["title"]
+    description = selected_issue["description"]
+    issue_url = selected_issue["html_url"]
 
-    description = (
-        args.issue_description
-        or fetched_issue.get("description")
-        or input("Issue description: ").strip()
-    )
+    print(f"\nSelected issue: #{selected_issue['number']} - {title}")
 
     print("\nStarting AutoFix Agent...")
     print(f"Provider : {settings.llm_provider}")

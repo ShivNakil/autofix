@@ -8,6 +8,7 @@ import streamlit as st
 import subprocess
 import sys
 import os
+import requests
 from pathlib import Path
 
 # Add the app directory to Python path so we can import from it
@@ -111,6 +112,11 @@ def main():
     # Main form
     st.header("📝 Issue Details")
 
+    # Initialize issue variables
+    issue_title = ""
+    issue_description = ""
+    issue_url = ""
+
     col1, col2 = st.columns([2, 1])
 
     with col1:
@@ -120,38 +126,65 @@ def main():
             help="The GitHub repository to fix (must end with .git)"
         )
 
-        issue_url = st.text_input(
-            "GitHub Issue URL (Optional)",
-            placeholder="https://github.com/owner/repo/issues/123",
-            help="If provided, the agent will fetch the issue title and description automatically"
-        )
+        # Fetch and select issue functionality
+        if repo_url:
+            try:
+                # Parse repo URL to get owner and repo name
+                from app.tools.github import parse_repo_url, fetch_open_issues
+
+                owner, repo_name = parse_repo_url(repo_url)
+
+                with st.spinner(f"Fetching open issues from {owner}/{repo_name}..."):
+                    issues = fetch_open_issues(owner, repo_name)
+
+                if issues:
+                    st.success(f"Found {len(issues)} open issues")
+
+                    # Create issue options for selectbox
+                    issue_options = []
+                    for issue in issues:
+                        # Truncate title if too long
+                        title = issue["title"]
+                        if len(title) > 50:
+                            title = title[:47] + "..."
+                        issue_options.append(f"#{issue['number']}: {title}")
+
+                    selected_idx = st.selectbox(
+                        "Select an Issue",
+                        options=range(len(issue_options)),
+                        format_func=lambda x: issue_options[x],
+                        help="Choose an issue to fix from the repository"
+                    )
+
+                    # Get selected issue details
+                    selected_issue = issues[selected_idx]
+                    issue_title = selected_issue["title"]
+                    issue_description = selected_issue["description"]
+                    issue_url = selected_issue["html_url"]
+
+                    # Display selected issue info
+                    st.info(f"**Selected:** #{selected_issue['number']} - {selected_issue['title']}")
+                else:
+                    st.warning("No open issues found in this repository")
+            except Exception as e:
+                st.error(f"Error fetching issues: {str(e)}")
 
     with col2:
-        if st.button("🔍 Fetch Issue", help="Fetch issue details from GitHub"):
-            if issue_url:
-                with st.spinner("Fetching issue from GitHub..."):
-                    try:
-                        # Import here to avoid circular imports
-                        from app.tools.github import fetch_public_issue
-                        issue_data = fetch_public_issue(issue_url)
-                        st.session_state.fetched_issue = issue_data
-                        st.success(f"Fetched issue: {issue_data['title']}")
-                    except Exception as e:
-                        st.error(f"Could not fetch issue: {str(e)}")
-            else:
-                st.warning("Please provide a GitHub issue URL")
+        # Keep minimal spacing for alignment
+        st.write("")
+        st.write("")
 
-    # Issue title and description
+    # Issue title and description (pre-filled from selection if available)
     issue_title = st.text_input(
         "Issue Title",
-        value=st.session_state.get('fetched_issue', {}).get('title', ''),
+        value=issue_title,
         placeholder="Enter issue title here",
         help="Title of the issue to fix"
     )
 
     issue_description = st.text_area(
         "Issue Description",
-        value=st.session_state.get('fetched_issue', {}).get('description', ''),
+        value=issue_description,
         height=150,
         placeholder="Enter issue description here...",
         help="Detailed description of the issue to fix"

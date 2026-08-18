@@ -91,22 +91,18 @@ Then:
 python -m app.main
 ```
 
-The CLI will ask for:
+The updated CLI will ask for:
 
 - GitHub repository URL
-- GitHub issue URL
+- Selection from open issues in that repository (automatically fetched)
 - Maximum repair iterations
 
-If a public GitHub issue URL is supplied, the agent fetches the issue title and
-description through the GitHub REST API. You can override them with CLI flags.
+You can also run non-interactively by specifying only the repo URL (the agent will prompt for issue selection interactively).
 
-You can also run non-interactively:
+Example non-interactive usage:
 
 ```bash
-python -m app.main ^
-  --repo https://github.com/OWNER/REPO.git ^
-  --issue-title "Fix parser crash" ^
-  --issue-description "Parser crashes when input is empty."
+python -m app.main --repo https://github.com/OWNER/REPO.git --max-retries 5
 ```
 
 ## Provider configuration
