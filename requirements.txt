@@ -8,3 +8,5 @@ pydantic>=2.8,<3
 pydantic-settings>=2.4,<3
 python-dotenv>=1.0,<2
 requests>=2.32,<3
+
+tqdm>=4.66,<5

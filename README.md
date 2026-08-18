@@ -205,3 +205,12 @@ Phase 1 now distinguishes:
 
 LLM provider errors are also normalized so quota/rate-limit failures do not
 trigger an uncontrolled retry loop.
+
+
+## v7 changes
+
+- `MAX_RETRIES` replaces `MAX_ITERATIONS`.
+- State tracks `retry_count`.
+- One LangGraph-driven `tqdm` progress bar displays the current node and retry.
+- Generated artifacts such as `__pycache__`, `*.pyc`, `.pytest_cache`,
+  virtual environments, and `node_modules` are excluded from the final diff.

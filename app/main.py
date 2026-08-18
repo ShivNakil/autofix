@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import argparse
 import sys
 
@@ -16,9 +17,9 @@ def parse_args():
     parser.add_argument("--issue-title")
     parser.add_argument("--issue-description")
     parser.add_argument(
-        "--max-iterations",
+        "--max-retries",
         type=int,
-        default=settings.max_iterations,
+        default=settings.max_retries,
     )
 
     return parser.parse_args()
@@ -29,6 +30,44 @@ def prompt_if_missing(value: str | None, message: str) -> str:
         return value
     return input(message).strip()
 
+
+def run_with_progress(graph, initial_state, max_retries):
+    labels = {
+        "clone": "Cloning repository",
+        "inspect": "Inspecting repository",
+        "analysis": "Analyzing issue",
+        "patch": "Applying fix",
+        "test": "Running tests",
+        "debug": "Debugging failure",
+        "finish": "Finalizing",
+    }
+
+    with tqdm(
+        total=6 + (max_retries * 2),
+        desc="AutoFix | Starting",
+        unit="step",
+        dynamic_ncols=True,
+        leave=True,
+    ) as bar:
+        final_state = dict(initial_state)
+
+        for event in graph.stream(initial_state, stream_mode="updates"):
+            for node_name, node_state in event.items():
+                if isinstance(node_state, dict):
+                    final_state.update(node_state)
+
+                if node_name == "debug":
+                    retry = final_state.get("retry_count", 0)
+                    label = f"Debugging failure ({retry}/{max_retries})"
+                else:
+                    label = labels.get(node_name, node_name)
+
+                bar.set_description(f"AutoFix | {label}")
+                bar.update(1)
+
+        bar.set_description("AutoFix | Complete")
+
+    return final_state
 
 def main():
     args = parse_args()
@@ -67,21 +106,23 @@ def main():
     print(f"Provider : {settings.llm_provider}")
     print(f"Model    : {settings.llm_model}")
     print(f"Repo     : {repo}")
-    print(f"Retries  : {args.max_iterations}\n")
+    print(f"Retries  : {args.max_retries}\n")
 
     graph = build_graph()
 
     try:
-        result = graph.invoke(
+        result = run_with_progress(
+            graph,
             {
                 "repo_url": repo,
                 "issue_url": issue_url,
                 "issue_title": title,
                 "issue_description": description,
-                "iteration": 0,
-                "max_iterations": args.max_iterations,
+                "retry_count": 0,
+                "max_retries": args.max_retries,
                 "final_status": "STARTED",
-            }
+            },
+            args.max_retries,
         )
     except Exception as exc:
         print(f"\nERROR: {exc}", file=sys.stderr)

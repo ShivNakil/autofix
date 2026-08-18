@@ -228,32 +228,29 @@ def should_debug(state: AgentState) -> str:
     if status == TestStatus.PASSED.value:
         return "finish"
 
-    # Environment failures are not source-code bugs. Do not spend an LLM call
-    # trying to repair application code for missing dependencies/tools.
-    if status == TestStatus.ENVIRONMENT_ERROR.value:
-        return "finish"
-
-    # A timeout is handled as an operational failure in Phase 1.
-    if status == TestStatus.TIMEOUT.value:
+    if status in {
+        TestStatus.ENVIRONMENT_ERROR.value,
+        TestStatus.TIMEOUT.value,
+    }:
         return "finish"
 
     if state.get("final_status") == "NO_SAFE_EDIT":
         return "finish"
 
-    if state.get("iteration", 0) >= state.get(
-        "max_iterations",
-        settings.max_iterations,
-    ):
+    retry_count = state.get("retry_count", 0)
+    max_retries = state.get("max_retries", settings.max_retries)
+
+    if retry_count >= max_retries:
         return "finish"
 
     return "debug"
 
 def debug_node(state: AgentState) -> AgentState:
-    iteration = state.get("iteration", 0) + 1
-    print(f"[DEBUG] Iteration {iteration}/{state.get('max_iterations', 3)}")
+    retry_count = state.get("retry_count", 0) + 1
+    max_retries = state.get("max_retries", settings.max_retries)
 
-    # Rebuild context from the actual repository state before asking the model
-    # to propose a correction.
+    print(f"[DEBUG] Retry {retry_count}/{max_retries}")
+
     refreshed = _build_file_context(
         state["repository_path"],
         state.get("relevant_files", []),
@@ -262,7 +259,7 @@ def debug_node(state: AgentState) -> AgentState:
     current_state = {
         **state,
         "file_context": refreshed,
-        "iteration": iteration,
+        "retry_count": retry_count,
     }
 
     plan = debug_edits(
@@ -274,6 +271,31 @@ def debug_node(state: AgentState) -> AgentState:
     )
 
     return apply_edits(current_state, plan)
+
+def get_clean_diff(repository_path: str) -> str:
+    """Return Git diff without generated artifacts."""
+    ignored_prefixes = (
+        "__pycache__/", ".pytest_cache/", ".venv/", "venv/",
+        "node_modules/", ".mypy_cache/", ".ruff_cache/"
+    )
+    ignored_suffixes = (".pyc", ".pyo", ".class")
+
+    raw = get_diff(repository_path)
+    if not raw:
+        return ""
+
+    out = []
+    skip = False
+    for line in raw.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            parts = line.strip().split()
+            path = parts[2][2:] if len(parts) >= 4 and parts[2].startswith("a/") else ""
+            path = path.replace("\\", "/")
+            skip = path.startswith(ignored_prefixes) or path.endswith(ignored_suffixes)
+        if not skip:
+            out.append(line)
+    return "".join(out)
+
 
 def finish_node(state: AgentState) -> AgentState:
     test_status = state.get("test_status")
@@ -297,7 +319,7 @@ def finish_node(state: AgentState) -> AgentState:
     return {
         **state,
         "final_status": status,
-        "final_diff": get_diff(state["repository_path"]),
+        "final_diff": get_clean_diff(state["repository_path"]),
     }
 
 def build_graph():

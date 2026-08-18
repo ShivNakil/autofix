@@ -24,8 +24,8 @@ class AgentState(TypedDict, total=False):
     test_status: str
     tests_passed: bool
 
-    iteration: int
-    max_iterations: int
+    retry_count: int
+    max_retries: int
 
     final_status: str
     final_diff: str

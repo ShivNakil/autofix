@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
 
-    max_iterations: int = 3
+    max_retries: int = 3
     test_timeout_seconds: int = 120
     workspace_dir: str = "workspace"
 
