@@ -164,3 +164,13 @@ The deterministic edit tool verifies that each `old` string exists exactly once,
 applies the replacement, and lets Git generate the authoritative diff. This
 avoids malformed LLM-generated hunks and cleanly separates probabilistic
 reasoning from deterministic repository mutation.
+
+
+## v3 edit matching
+
+The deterministic edit layer first attempts an exact match. If that fails, it
+normalizes CRLF/LF line endings and trailing whitespace and searches by line
+window. It still refuses zero matches and ambiguous matches.
+
+The workflow also refreshes repository context after every edit and before
+every debugging iteration.

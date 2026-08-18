@@ -119,9 +119,32 @@ def analysis_node(state: AgentState) -> AgentState:
 
 def apply_edits(state: AgentState, plan) -> AgentState:
     if not plan.edits:
-        return {**state, "patch_applied": False, "final_status": "NO_SAFE_EDIT"}
-    apply_code_edits(state["repository_path"], plan.edits)
-    return {**state, "patch_applied": True}
+        print("[EDIT] Model returned no safe edits.")
+        return {
+            **state,
+            "patch_applied": False,
+            "final_status": "NO_SAFE_EDIT",
+        }
+
+    print(f"[EDIT] Received {len(plan.edits)} proposed edit(s).")
+
+    apply_code_edits(
+        state["repository_path"],
+        plan.edits,
+    )
+
+    # Refresh the actual current file contents after modification.
+    files = state.get("relevant_files", [])
+    refreshed = _build_file_context(
+        state["repository_path"],
+        files,
+    )
+
+    return {
+        **state,
+        "patch_applied": True,
+        "file_context": refreshed,
+    }
 
 def patch_node(state: AgentState) -> AgentState:
     if state.get("tests_passed"):
@@ -133,25 +156,42 @@ def patch_node(state: AgentState) -> AgentState:
 
 def test_node(state: AgentState) -> AgentState:
     command = detect_test_command(state["repository_path"])
+
+    if not command:
+        print("[TEST] No test command detected.")
+        return {
+            **state,
+            "test_command": "",
+            "test_output": "NO_TEST_COMMAND_DETECTED",
+            "tests_passed": False,
+            "final_status": "NO_TEST_COMMAND",
+        }
+
+    print(f"[TEST] Running: {command}")
+
     passed, output = run_tests(
         state["repository_path"],
         command=command,
         timeout=settings.test_timeout_seconds,
     )
 
+    print("[TEST] PASSED" if passed else "[TEST] FAILED")
+
     return {
         **state,
-        "test_command": command or "",
+        "test_command": command,
         "test_output": output,
         "tests_passed": passed,
     }
-
 
 def should_debug(state: AgentState) -> str:
     if state.get("tests_passed"):
         return "finish"
 
-    if state.get("final_status") == "NO_SAFE_EDIT":
+    if state.get("final_status") in {
+        "NO_SAFE_EDIT",
+        "NO_TEST_COMMAND",
+    }:
         return "finish"
 
     if state.get("iteration", 0) >= state.get(
@@ -164,12 +204,31 @@ def should_debug(state: AgentState) -> str:
 
 
 def debug_node(state: AgentState) -> AgentState:
-    plan = debug_edits(
-        state["issue_title"], state["issue_description"], state["analysis"],
-        state.get("test_output", ""), state.get("file_context", "")
+    iteration = state.get("iteration", 0) + 1
+    print(f"[DEBUG] Iteration {iteration}/{state.get('max_iterations', 3)}")
+
+    # Rebuild context from the actual repository state before asking the model
+    # to propose a correction.
+    refreshed = _build_file_context(
+        state["repository_path"],
+        state.get("relevant_files", []),
     )
-    result = apply_edits(state, plan)
-    return {**result, "iteration": state.get("iteration", 0) + 1}
+
+    current_state = {
+        **state,
+        "file_context": refreshed,
+        "iteration": iteration,
+    }
+
+    plan = debug_edits(
+        current_state["issue_title"],
+        current_state["issue_description"],
+        current_state["analysis"],
+        current_state.get("test_output", ""),
+        current_state.get("file_context", ""),
+    )
+
+    return apply_edits(current_state, plan)
 
 def finish_node(state: AgentState) -> AgentState:
     if state.get("tests_passed"):

@@ -44,11 +44,6 @@ CURRENT RELEVANT FILE CONTENT:
 {file_context}
 """),
     ])
-
-    print("\n========== STRUCTURED EDIT ==========")
-    print(response)
-    print("========== END STRUCTURED EDIT ==========\n")
-
     return response if isinstance(response, CodeEditPlan) else CodeEditPlan.model_validate(response)
 
 def debug_edits(issue_title, issue_description, analysis, test_output, file_context) -> CodeEditPlan:
